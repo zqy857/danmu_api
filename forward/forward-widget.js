@@ -17,7 +17,7 @@ WidgetMetadata = {
     // 源配置
     {
       name: "sourceOrder",
-      title: "源排序配置，默认'360,vod,renren,hanjutv'，可选['360', 'vod', 'tmdb', 'douban', 'tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'migu', 'sohu', 'leshi', 'xigua', 'maiduidui', 'aiyifan', 'renren', 'hanjutv', 'bahamut', 'dandan', 'custom']",
+      title: "源排序配置，默认'douban,360,renren,hanjutv'，可选['360', 'vod', 'tmdb', 'douban', 'tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'migu', 'sohu', 'leshi', 'xigua', 'maiduidui', 'aiyifan', 'renren', 'hanjutv', 'bahamut', 'dandan', 'custom']",
       type: "input",
       placeholders: [
         {
@@ -25,8 +25,8 @@ WidgetMetadata = {
           value: "tencent,iqiyi,imgo,bilibili,youku,renren,hanjutv",
         },
         {
-          title: "配置2",
-          value: "douban,360,vod,renren,hanjutv",
+          title: "配置2（推荐）",
+          value: "douban,360,renren,hanjutv",
         },
         {
           title: "配置3",
@@ -145,6 +145,17 @@ WidgetMetadata = {
         {
           title: "示例",
           value: "SESSDATA=xxxx",
+        },
+      ],
+    },
+    {
+      name: "doubanCookie",
+      title: "豆瓣Cookie（填入后可提升豆瓣搜索和详情请求稳定性）",
+      type: "input",
+      placeholders: [
+        {
+          title: "示例",
+          value: "",
         },
       ],
     },
@@ -347,7 +358,7 @@ WidgetMetadata = {
     },
     {
       name: "danmuOffset",
-      title: "弹幕时间偏移配置，格式：剧名:秒 或 剧名/季:秒 或 剧名/季/集:秒，正数表示弹幕延后（向右），负数表示弹幕提前（向左），多条用逗号分隔，示例：overlord/S01:90,re-zero/S02:120,re-zero/S02/E03:10",
+      title: "弹幕时间偏移配置，格式：剧名:秒 或 剧名/季:秒 或 剧名/季/集:秒，正数表示弹幕延后（向右），负数表示弹幕提前（向左），多条用逗号分隔，示例：overlord/S01:90,re-zero/S02:120,re-zero/S02/E03:10；支持百分比模式，在路径/来源末尾添加 `%`，例如：`东方/S03/E02@tencent%:11`，按 `原时间 * (视频时长 + 偏移秒数) / 视频时长` 计算新的弹幕发送时间",
       type: "input",
       placeholders: [
         {
@@ -500,7 +511,7 @@ if (typeof window !== 'undefined') {
 
 // 初始化全局配置
 let globals;
-async function initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, 
+async function initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, doubanCookie,
                      platformOrder, episodeTitleFilter, enableAnimeEpisodeFilter, strictTitleMatch, titleMappingTable, animeTitleFilter, animeTitleSimplified, blockedWords, groupMinute, 
                      danmuLimit, danmuSimplifiedTraditional, danmuOffset, convertTopBottomToScroll, convertColor, colorPool, proxyUrl, tmdbApiKey, likeSwitch) {
   // 将传入的参数设置到环境变量中，以便Globals可以访问它们
@@ -513,6 +524,7 @@ async function initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServ
   if (vodReturnMode !== undefined) env.VOD_RETURN_MODE = vodReturnMode;
   if (vodRequestTimeout !== undefined) env.VOD_REQUEST_TIMEOUT = vodRequestTimeout;
   if (bilibiliCookie !== undefined) env.BILIBILI_COOKIE = bilibiliCookie;
+  if (doubanCookie !== undefined) env.DOUBAN_COOKIE = doubanCookie;
   if (platformOrder !== undefined) env.PLATFORM_ORDER = platformOrder;
   if (episodeTitleFilter !== undefined) env.EPISODE_TITLE_FILTER = episodeTitleFilter;
   if (enableAnimeEpisodeFilter !== undefined) env.ENABLE_ANIME_EPISODE_FILTER = enableAnimeEpisodeFilter;
@@ -544,7 +556,7 @@ async function initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServ
 // 获取变量数据
 async function getCaches() {
     if (globals.animes.length === 0) {
-        log("info", 'getCaches start.');
+        log("info", '[Forward] getCaches start.');
         const [kv_animes, kv_episodeIds, kv_episodeNum, kv_logBuffer, kv_lastSelectMap] = await Promise.all([
           Widget.storage.get('animes'),
           Widget.storage.get('episodeIds'),
@@ -570,7 +582,7 @@ async function getCaches() {
 
 // 存储更新后的变量
 async function updateCaches() {
-    log("info", 'updateCaches start.');
+    log("info", '[Forward] updateCaches start.');
     await Promise.all([
       Widget.storage.set('animes', globals.animes),
       Widget.storage.set('episodeIds', globals.episodeIds),
@@ -582,7 +594,7 @@ async function updateCaches() {
 
 // 删除存储的变量
 async function removeCaches() {
-    log("info", 'removeCaches start.');
+    log("info", '[Forward] removeCaches start.');
     await Promise.all([
       Widget.storage.remove('animes'),
       Widget.storage.remove('episodeIds'),
@@ -595,11 +607,11 @@ async function removeCaches() {
 const PREFIX_URL = "http://localhost:9321"
 
 async function searchDanmu(params) {
-  const { tmdbId, type, title, season, link, videoUrl, sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, 
+  const { tmdbId, type, title, season, link, videoUrl, sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, doubanCookie,
          platformOrder, episodeTitleFilter, enableAnimeEpisodeFilter, strictTitleMatch, titleMappingTable, animeTitleFilter, animeTitleSimplified, blockedWords, groupMinute, 
          danmuLimit, danmuSimplifiedTraditional, danmuOffset, convertTopBottomToScroll, convertColor, colorPool, proxyUrl, tmdbApiKey, likeSwitch } = params;
 
-  await initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, 
+  await initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, doubanCookie,
                     platformOrder, episodeTitleFilter, enableAnimeEpisodeFilter, strictTitleMatch, titleMappingTable, animeTitleFilter, animeTitleSimplified, blockedWords, groupMinute, 
                     danmuLimit, danmuSimplifiedTraditional, danmuOffset, convertTopBottomToScroll, convertColor, colorPool, proxyUrl, tmdbApiKey, likeSwitch);
 
@@ -607,7 +619,7 @@ async function searchDanmu(params) {
   // 如果启用了搜索关键字繁转简，则进行转换
   if (globals.animeTitleSimplified) {
     simplifiedTitle = simplized(title);
-    log("info", `searchAnime converted traditional to simplified: ${title} -> ${simplifiedTitle}`);
+    log("info", `[Forward] searchAnime converted traditional to simplified: ${title} -> ${simplifiedTitle}`);
   }
 
   const response = await searchAnime(new URL(`${PREFIX_URL}/api/v2/search/anime?keyword=${simplifiedTitle}`));
@@ -665,7 +677,7 @@ async function searchDanmu(params) {
     }
   }
 
-  log("info", "animes: ", animes);
+  log("info", "[Forward] animes: ", animes);
 
   await updateCaches();
 
@@ -675,18 +687,18 @@ async function searchDanmu(params) {
 }
 
 async function getDetailById(params) {
-  const { animeId, sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, 
+  const { animeId, sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, doubanCookie,
          platformOrder, episodeTitleFilter, enableAnimeEpisodeFilter, strictTitleMatch, titleMappingTable, animeTitleFilter, animeTitleSimplified, blockedWords, groupMinute, 
          danmuLimit, danmuSimplifiedTraditional, danmuOffset, convertTopBottomToScroll, convertColor, colorPool, proxyUrl, tmdbApiKey, likeSwitch } = params;
 
-  await initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, 
+  await initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, doubanCookie,
                     platformOrder, episodeTitleFilter, enableAnimeEpisodeFilter, strictTitleMatch, titleMappingTable, animeTitleFilter, animeTitleSimplified, blockedWords, groupMinute, 
                     danmuLimit, danmuSimplifiedTraditional, danmuOffset, convertTopBottomToScroll, convertColor, colorPool, proxyUrl, tmdbApiKey, likeSwitch);
 
   const response = await getBangumi(`${PREFIX_URL}/api/v2/bangumi/${animeId}`);
   const resJson = await response.json();
 
-  log("info", "bangumi", resJson);
+  log("info", "[Forward] bangumi", resJson);
 
   await updateCaches();
 
@@ -694,11 +706,11 @@ async function getDetailById(params) {
 }
 
 async function getCommentsById(params) {
-  const { commentId, link, videoUrl, season, episode, tmdbId, type, title, segmentTime, sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, 
+  const { commentId, link, videoUrl, season, episode, tmdbId, type, title, segmentTime, sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, doubanCookie,
          platformOrder, episodeTitleFilter, enableAnimeEpisodeFilter, strictTitleMatch, titleMappingTable, animeTitleFilter, animeTitleSimplified, blockedWords, groupMinute, 
          danmuLimit, danmuSimplifiedTraditional, danmuOffset, convertTopBottomToScroll, convertColor, colorPool, proxyUrl, tmdbApiKey, likeSwitch } = params;
 
-  await initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, 
+  await initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, doubanCookie,
                     platformOrder, episodeTitleFilter, enableAnimeEpisodeFilter, strictTitleMatch, titleMappingTable, animeTitleFilter, animeTitleSimplified, blockedWords, groupMinute, 
                     danmuLimit, danmuSimplifiedTraditional, danmuOffset, convertTopBottomToScroll, convertColor, colorPool, proxyUrl, tmdbApiKey, likeSwitch);
 
@@ -708,14 +720,14 @@ async function getCommentsById(params) {
     const segmentList = Widget.storage.get(storeKey);
     const lastCommentId = Widget.storage.get(commentIdKey);
     
-    log("info", "storeKey:", storeKey);
-    log("info", "commentIdKey:", commentIdKey);
-    log("info", "commentId:", commentId);
-    log("info", "lastCommentId:", lastCommentId);
-    log("info", "segmentList:", segmentList);
+    log("info", "[Forward] storeKey:", storeKey);
+    log("info", "[Forward] commentIdKey:", commentIdKey);
+    log("info", "[Forward] commentId:", commentId);
+    log("info", "[Forward] lastCommentId:", lastCommentId);
+    log("info", "[Forward] segmentList:", segmentList);
 
     if (lastCommentId === commentId && segmentList) {
-        return await getDanmuWithSegmentTime({ segmentTime, tmdbId, season, episode, sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, 
+        return await getDanmuWithSegmentTime({ segmentTime, tmdbId, season, episode, sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, doubanCookie,
                                                platformOrder, episodeTitleFilter, enableAnimeEpisodeFilter, strictTitleMatch, titleMappingTable, animeTitleFilter, animeTitleSimplified, blockedWords, groupMinute, 
                                                danmuLimit, danmuSimplifiedTraditional, danmuOffset, convertTopBottomToScroll, convertColor, colorPool, proxyUrl, tmdbApiKey, likeSwitch })
     } else {
@@ -726,12 +738,10 @@ async function getCommentsById(params) {
     const response = await getComment(`${PREFIX_URL}/api/v2/comment/${commentId}`, "json", true);
     const resJson = await response.json();
 
-    log("info", "segmentList:", resJson.comments.segmentList);
+    log("info", "[Forward] segmentList:", resJson.comments.segmentList);
 
     Widget.storage.set(storeKey, resJson.comments.segmentList);
     Widget.storage.set(commentIdKey, commentId);
-
-    console.log("segmentList", resJson.comments.segmentList);
 
     await updateCaches();
 
@@ -741,11 +751,11 @@ async function getCommentsById(params) {
 }
 
 async function getDanmuWithSegmentTime(params) {
-  const { segmentTime, tmdbId, season, episode, sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, 
+  const { segmentTime, tmdbId, season, episode, sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, doubanCookie,
          platformOrder, episodeTitleFilter, enableAnimeEpisodeFilter, strictTitleMatch, titleMappingTable, animeTitleFilter, animeTitleSimplified, blockedWords, groupMinute, 
          danmuLimit, danmuSimplifiedTraditional, danmuOffset, convertTopBottomToScroll, convertColor, colorPool, proxyUrl, tmdbApiKey, likeSwitch } = params;
 
-  await initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, 
+  await initGlobals(sourceOrder, otherServer, customSourceApiUrl, vodServers, vodReturnMode, vodRequestTimeout, bilibiliCookie, doubanCookie,
                     platformOrder, episodeTitleFilter, enableAnimeEpisodeFilter, strictTitleMatch, titleMappingTable, animeTitleFilter, animeTitleSimplified, blockedWords, groupMinute, 
                     danmuLimit, danmuSimplifiedTraditional, danmuOffset, convertTopBottomToScroll, convertColor, colorPool, proxyUrl, tmdbApiKey, likeSwitch);
 
@@ -758,7 +768,7 @@ async function getDanmuWithSegmentTime(params) {
         const time = Number(segmentTime);
         return time >= start && time < end;
     });
-    log("info", "segment:", segment);
+    log("info", "[Forward] segment:", segment);
     const response = await getSegmentComment(segment);
     const resJson = await response.json();
 
